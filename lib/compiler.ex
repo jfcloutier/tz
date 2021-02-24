@@ -10,10 +10,7 @@ defmodule Tz.Compiler do
   @reject_periods_before_year Application.get_env(:tz, :reject_time_zone_periods_before_year)
 
   def compile() do
-    tz_data_dir_name =
-      File.ls!(:code.priv_dir(:tz))
-      |> Enum.filter(&Regex.match?(~r/^tzdata20[0-9]{2}[a-z]$/, &1))
-      |> Enum.max()
+    tz_data_dir_name = tz_data_dir_name()
 
     {periods_and_links, ongoing_rules} =
       for filename <- ~w(africa antarctica asia australasia backward etcetera europe northamerica southamerica)s do
@@ -53,6 +50,7 @@ defmodule Tz.Compiler do
     compile_periods(periods_and_links, tz_data_dir_name)
 
     compile_map_ongoing_changing_rules(ongoing_rules)
+    maybe_erase_prod_tzdata()
   end
 
   defp reject_periods_before_year(periods, nil), do: periods
@@ -123,5 +121,18 @@ defmodule Tz.Compiler do
     module = :"Elixir.Tz.OngoingChangingRulesProvider"
     Module.create(module, quoted, Macro.Env.location(__ENV__))
     :code.purge(module)
+  end
+
+  defp tz_data_dir_name() do
+    File.ls!(:code.priv_dir(:tz))
+    |> Enum.filter(&Regex.match?(~r/^tzdata20[0-9]{2}[a-z]$/, &1))
+    |> Enum.max()
+  end
+
+  defp maybe_erase_prod_tzdata() do
+    if Application.get_env(:tz, :erase_tz_data_after_compiling, false) do
+      Path.join(:code.priv_dir(:tz), tz_data_dir_name())
+      |> File.rm_rf!()
+    end
   end
 end
